@@ -1,1 +1,1 @@
-{}
+{"PlayableEmbeds":{"version":"0.0.0","build":"https://cdn.jsdelivr.net/gh/Maix0/AliucordPluginsModern@refs/heads/builds/PlayableEmbeds.zip","buildCrc32":"BCB9DCF0","changelog":"# 1.0.2\n* Youtube embed now supports timestamps","minimumDiscordVersion":126021,"minimumAliucordVersion":"2.7.0","minimumKotlinVersion":"1.5.21","minimumApiLevel":21}}
