@@ -45,6 +45,7 @@ val ALLOWED_RESOURCE_DOMAINS = arrayOf(
     "media.discordapp.net",
     "i.imgur.com",
     "i.ibb.co", // only for you, FrozenPhoton
+    "maix.me",
 )
 
 val ALLOWED_RESOURCE_DOMAINS_PATTERN: Pattern by lazy {

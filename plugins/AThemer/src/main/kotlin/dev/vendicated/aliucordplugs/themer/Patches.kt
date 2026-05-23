@@ -131,7 +131,10 @@ private fun PatcherAPI.setBackgrounds() {
     if (transparencyMode == TransparencyMode.FULL) {
         val rootId = Utils.getResId("action_bar_root", "id")
         patch(AppFragment::class.java.getDeclaredMethod("onViewBound", View::class.java), Hook { param ->
-            if (ResourceManager.customBg == null && ResourceManager.animatedBgUri == null) return@Hook
+            if (ResourceManager.customBg == null && ResourceManager.animatedBgUri == null) {
+                logger.warn("BG: Returning early.");
+                return@Hook
+            }
             var view = param.args[0] as View
             val clazz = param.thisObject::class.java
             val cName = clazz.name
