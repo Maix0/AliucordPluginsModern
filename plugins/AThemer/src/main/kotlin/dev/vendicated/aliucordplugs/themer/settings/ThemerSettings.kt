@@ -109,7 +109,7 @@ class ThemerSettings : SettingsPage() {
                 ctx,
                 CheckedSetting.ViewType.RADIO,
                 "Full",
-                "Everything is transparent. Will only work with themes specifically made for it."
+                "Everything is transparent. Requires a wallpaper; opaque theme backgrounds are made translucent automatically."
             ),
         ).let { radios ->
             val manager = RadioManager(radios)

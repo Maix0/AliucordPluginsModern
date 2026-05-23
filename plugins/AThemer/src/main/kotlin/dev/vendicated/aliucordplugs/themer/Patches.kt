@@ -100,9 +100,10 @@ fun deoptimize() {
 }
 
 val backgroundId = View.generateViewId()
-private fun setBackground(view: View, parent: ViewGroup = view as ViewGroup) {
+private fun setBackground(wallpaperRoot: ViewGroup) {
     if (ResourceManager.animatedBgUri != null) {
-        if (parent is FragmentContainerView || parent.findViewById<View>(backgroundId) != null) return
+        val parent = FullTransparency.findWallpaperParent(wallpaperRoot)
+        if (parent.findViewById<View>(backgroundId) != null) return
 
         SimpleDraweeView(parent.context).run {
             this.id = backgroundId
@@ -116,16 +117,17 @@ private fun setBackground(view: View, parent: ViewGroup = view as ViewGroup) {
         }
 
         if (ResourceManager.overlayAlpha != 0)
-            view.background = ColorDrawable(ColorUtils.setAlphaComponent(Color.BLACK, ResourceManager.overlayAlpha))
+            wallpaperRoot.background = ColorDrawable(ColorUtils.setAlphaComponent(Color.BLACK, ResourceManager.overlayAlpha))
     } else if (ResourceManager.customBg != null) {
-        view.background = ResourceManager.customBg
+        wallpaperRoot.background = ResourceManager.customBg
     }
 }
 
 private fun PatcherAPI.setBackgrounds() {
     val chatId = Utils.getResId("panel_center", "id")
 
-    val id = View.generateViewId()
+    val scrimOverlayId = View.generateViewId()
+    val chatBgId = Utils.getResId("widget_home_panel_center_chat", "id")
 
     val transparencyMode = AThemer.mSettings.transparencyMode
     if (transparencyMode == TransparencyMode.FULL) {
@@ -135,7 +137,7 @@ private fun PatcherAPI.setBackgrounds() {
                 logger.warn("BG: Returning early.");
                 return@Hook
             }
-            var view = param.args[0] as View
+            val fragmentRoot = param.args[0] as View
             val clazz = param.thisObject::class.java
             val cName = clazz.name
 
@@ -144,10 +146,10 @@ private fun PatcherAPI.setBackgrounds() {
             if (cName == "com.discord.widgets.user.search.WidgetGlobalSearch" ||
                 cName == "com.discord.widgets.user.WidgetUserMentions"
             ) {
-                setBackground(view)
+                setBackground(fragmentRoot as ViewGroup)
                 // Add darken overlay
-                (view as ViewGroup).addView(
-                    View(view.context).apply {
+                (fragmentRoot as ViewGroup).addView(
+                    View(fragmentRoot.context).apply {
                         layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                         background = ColorDrawable().apply {
                             color = ColorUtils.setAlphaComponent(Color.BLACK, 100)
@@ -157,36 +159,32 @@ private fun PatcherAPI.setBackgrounds() {
 
             }
 
-            // Two while loops to first find the root layout or return if it doesn't exist
-            // Then go even deeper to find the root root layout
-            while (view.id != rootId)
-                view = view.parent as View? ?: return@Hook
-            while (true) {
-                if (view.parent !is View) break
-                view = view.parent as View
+            when {
+                cName.endsWith("WidgetChatList") -> FullTransparency.applyChatPanelWallpaper(
+                    fragmentRoot, chatId, chatBgId, rootId, ::setBackground
+                )
+                cName.endsWith("WidgetHome") -> {
+                    FullTransparency.clearAppPanelBackgrounds(fragmentRoot)
+                    fragmentRoot.post { FullTransparency.clearAppPanelBackgrounds(fragmentRoot) }
+                    setBackground(FullTransparency.findWallpaperRoot(fragmentRoot, rootId))
+                }
+                else -> setBackground(FullTransparency.findWallpaperRoot(fragmentRoot, rootId))
             }
 
-            setBackground(view)
-
-            val shouldDarken =
-                cName == "com.discord.widgets.debugging.WidgetDebugging" ||
-                        cName == "com.discord.widgets.search.WidgetSearch" ||
-                        cName.contains("setting", true) ||
-                        SettingsPage::class.java.isAssignableFrom(clazz)
-
-            // Add overlay to darken pages, as they would otherwise be too bright
-            if (shouldDarken) {
-                val parent = (param.args[0] as View).parent as ViewGroup
-                if (parent !is FragmentContainerView && parent.findViewById<View>(id) == null)
+            // Scrim matches Aliucord plugin settings (SettingsPage), not Discord's global settings hub
+            if (FullTransparency.shouldApplyWallpaperScrim(clazz, cName)) {
+                val parent = fragmentRoot.parent as? ViewGroup
+                if (parent != null && parent !is FragmentContainerView && parent.findViewById<View>(scrimOverlayId) == null) {
                     parent.addView(
-                        View(view.context).apply {
-                            this.id = id
+                        View(fragmentRoot.context).apply {
+                            this.id = scrimOverlayId
                             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                             background = ColorDrawable().apply {
                                 color = ColorUtils.setAlphaComponent(Color.BLACK, 100)
                             }
                         }, 0
                     )
+                }
             }
         })
 
@@ -229,7 +227,7 @@ private fun PatcherAPI.setBackgrounds() {
                     view = view.parent as View
                     if (view.id == chatBgId) view.background = null
                 }
-                setBackground(view)
+                setBackground(view as ViewGroup)
             } else if (
                 transparencyMode == TransparencyMode.CHAT_SETTINGS && (className.lowercase()
                     .contains("settings") || SettingsPage::class.java.isAssignableFrom(clazz))
@@ -237,7 +235,7 @@ private fun PatcherAPI.setBackgrounds() {
                 if (ResourceManager.animatedBgUri != null)
                     logger.warn("Animated backgrounds aren't supported on the Chat & Settings setting")
                 else
-                    setBackground(view)
+                    setBackground(view as ViewGroup)
             }
         })
 
@@ -309,7 +307,7 @@ private fun PatcherAPI.patchOpenRawResource() {
 }
 
 private fun PatcherAPI.patchGetColor() {
-    patch(Resources::class.java.getDeclaredMethod("getColor", Int::class.javaPrimitiveType, Resources.Theme::class.java),
+        patch(Resources::class.java.getDeclaredMethod("getColor", Int::class.javaPrimitiveType, Resources.Theme::class.java),
         PreHook { param ->
             ResourceManager.getColorForId(param.args[0] as Int)?.let {
                 param.result = it
@@ -335,6 +333,44 @@ private fun PatcherAPI.patchSetColor() {
             }
         }
     )
+
+    if (AThemer.mSettings.transparencyMode == TransparencyMode.FULL) {
+        patch(
+            View::class.java.getDeclaredMethod("setBackgroundColor", Int::class.javaPrimitiveType),
+            PreHook { param ->
+                val view = param.thisObject as View
+                if (FullTransparency.isAppPanelView(view)) {
+                    param.args[0] = Color.TRANSPARENT
+                    return@PreHook
+                }
+                val color = param.args[0] as Int
+                ResourceManager.getColorReplacement(color)?.let {
+                    param.args[0] = it
+                    return@PreHook
+                }
+                FullTransparency.applyToViewBackground(color)?.let {
+                    param.args[0] = it
+                }
+            }
+        )
+        patch(
+            View::class.java.getDeclaredMethod("setBackground", Drawable::class.java),
+            PreHook { param ->
+                val view = param.thisObject as View
+                if (FullTransparency.isAppPanelView(view)) {
+                    param.args[0] = null
+                    return@PreHook
+                }
+                val drawable = param.args[0] as? ColorDrawable ?: return@PreHook
+                val color = drawable.color
+                ResourceManager.getColorReplacement(color)?.let {
+                    drawable.color = it
+                    return@PreHook
+                }
+                FullTransparency.applyToViewBackground(drawable)
+            }
+        )
+    }
 }
 
 private fun PatcherAPI.patchColorStateLists() {

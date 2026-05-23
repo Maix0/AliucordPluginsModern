@@ -150,6 +150,7 @@ object ThemeLoader {
 
     fun loadThemes(shouldLoad: Boolean) {
         themes.clear()
+        FullTransparency.clearThemedBackgrounds()
 
         if (!THEME_DIR.exists() && !THEME_DIR.mkdirs()) throw RuntimeException("Failed to create Theme directory ${THEME_DIR.absolutePath}")
 

@@ -62,6 +62,7 @@ object ResourceManager {
         raws.clear()
         customBg = null
         animatedBgUri = null
+        FullTransparency.clearThemedBackgrounds()
     }
 
     internal fun putFont(id: Int, font: Typeface) {
@@ -77,13 +78,17 @@ object ResourceManager {
     }
 
     internal fun putColor(name: String, color: Int) {
+        if (FullTransparency.isBackgroundResource(name)) {
+            FullTransparency.registerThemedBackground(color, name)
+        }
+        val resolved = FullTransparency.applyToNamedColor(color, name)
         val id = Utils.getResId(name, "color")
         if (id != 0) {
-            colorsById[id] = color
-            colorsByName[name] = color
+            colorsById[id] = resolved
+            colorsByName[name] = resolved
         } else {
             when (name) {
-                "statusbar", "input_background", "active_channel", "blocked_bg" -> colorsByName[name] = color
+                "statusbar", "input_background", "active_channel", "blocked_bg" -> colorsByName[name] = resolved
                 else -> logger.warn("Unrecognised colour $name")
             }
         }
@@ -117,6 +122,12 @@ object ResourceManager {
 
     private fun setAttr(attr: String, color: Int) {
         val id = Utils.getResId(attr, "attr")
-        if (id == 0) logger.warn("No such attribute: $attr") else attrs[id] = color
+        if (id == 0) logger.warn("No such attribute: $attr")
+        else {
+            if (FullTransparency.isBackgroundResource(attr)) {
+                FullTransparency.registerThemedBackground(color, attr)
+            }
+            attrs[id] = FullTransparency.applyToNamedColor(color, attr)
+        }
     }
 }
